@@ -87,7 +87,6 @@ def gpu_process_worker(call_queue, result_queue, initializer, initargs, gpu_inde
     """
     # set gpu environment
     import torch
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
     torch.cuda.set_device(gpu_index)
     if initializer is not None:
         try:
