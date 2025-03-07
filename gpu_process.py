@@ -5,8 +5,11 @@ from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures import _base
 from concurrent.futures.process import _ExceptionWithTraceback, _sendback_result
 import logging
-logging.basicConfig(level=logging.INFO)
 
+import test
+logging.basicConfig(level=logging.INFO)
+import threading
+import multiprocessing as mp
 
 def gpu_process_worker(call_queue, result_queue, initializer, initargs, gpu_initializer, gpu_index):
     """Evaluates calls from call_queue and places the results in result_queue.
@@ -77,43 +80,136 @@ class GPUProcessPoolExecutor(ProcessPoolExecutor):
                  initializer=None, initargs=(), 
                  gpu_initializer=torch_gpu_set_func,
                  gpu_list_func=torch_gpu_list_func):
-        super().__init__(len(gpu_indices), mp_context, initializer, initargs)
         if gpu_indices is None:
             gpu_indices = gpu_list_func()
         self.gpu_indices = gpu_indices
         self.gpu_initializer = gpu_initializer
+        self.gpu_status = [{"using": False, "lock": threading.Lock()} for _ in gpu_indices]
+        mp_context = mp.get_context('spawn')
+        super().__init__(len(gpu_indices), mp_context, initializer, initargs)
     
     
     def _spawn_process(self):
-        for gpu_index in self.gpu_indices:
-            p = self._mp_context.Process(
-                target=gpu_process_worker,
-                args=(self._call_queue,
-                    self._result_queue,
-                    self._initializer,
-                    self._initargs,
-                    self.gpu_initializer,
-                    gpu_index))
-            p.start()
-            self._processes[p.pid] = p
+        for gpu_index, status in zip(self.gpu_indices, self.gpu_status):
+            if not status["using"]:
+                with status["lock"]:
+                    status["using"] = True
+                    p = self._mp_context.Process(
+                        target=gpu_process_worker,
+                        args=(self._call_queue,
+                            self._result_queue,
+                            self._initializer,
+                            self._initargs,
+                            self.gpu_initializer,
+                            gpu_index))
+                    p.start()
+                    self._processes[p.pid] = p
+                    break
 
 
+
+
+def test_env(n):
+    import time
+    import random
+    import torch
+    print(f'task={n}   {torch.cuda.current_device()=}')
+    time.sleep(random.random() + 2)
+    return True
+
+def test_gpu_tensor_return(n):
+    import torch
+    device = 'cuda'
+    tensor = torch.ones((10,), device=device) * n
+    return tensor
+
+def test_gpu_tensor_input(tensor):
+    device = 'cuda'
+    print('receive', tensor)
+    tensor = tensor.to(device)
+    return tensor
+
+def test_gpu_tensor_input_rtcpu(tensor):
+    print('receive', tensor)
+    tensor = tensor.cpu()
+    return tensor
+    
+
+def test1():
+    # basic test
+    futures = []
+    with GPUProcessPoolExecutor(gpu_indices=[0, 1, 2]) as executor:
+        for number in range(12):
+            futures.append(executor.submit(test_env, number))
+        for f in futures:
+            print(f.result())
+
+def test2():
+    # test main recevice gpu tensor from different child process, these tensor was allocated by child
+    futures = []
+    with GPUProcessPoolExecutor(gpu_indices=[0, 1, 2]) as executor:
+        for number in range(12):
+            futures.append(executor.submit(test_gpu_tensor_return, number))
+        for f in futures:
+            print(f.result())
+
+def test3():
+    # send cpu tensor receive gpu tensor of different gpu device
+    futures = []
+    tensor_ls = []
+    import torch
+    with GPUProcessPoolExecutor(gpu_indices=[0, 1, 2]) as executor:
+        for number in range(6):
+            tensor = torch.ones((10,)) * number
+            futures.append(executor.submit(test_gpu_tensor_input, tensor))
+        for f in futures:
+            print(f.result())
+            tensor_ls.append(f.result())
+    for t in tensor_ls:
+        print(t.mean())
+
+def test4():
+    # !!! failed
+    # RuntimeError: Attempted to send CUDA tensor received from another process; this is not currently supported. Consider cloning before sending.
+    # send gpu tensor on same device receive gpu tensor of different gpu device
+    futures = []
+    tensor_ls = []
+    import torch
+    with GPUProcessPoolExecutor(gpu_indices=[0, 1, 2]) as executor:
+        for number in range(6):
+            tensor = torch.ones((10,), device='cuda') * number
+            futures.append(executor.submit(test_gpu_tensor_input, tensor))
+        for f in futures:
+            print(f.result())
+            tensor_ls.append(f.result())
+    for t in tensor_ls:
+        print(t.mean())
+
+
+def test5():
+    # send gpu tensor on same device, receive cpu tensor
+    futures = []
+    tensor_ls = []
+    import torch
+    with GPUProcessPoolExecutor(gpu_indices=[0, 1, 2]) as executor:
+        for number in range(6):
+            tensor = torch.ones((10,), device='cuda') * number
+            futures.append(executor.submit(test_gpu_tensor_input_rtcpu, tensor))
+        for f in futures:
+            print(f.result())
+            tensor_ls.append(f.result())
+    for t in tensor_ls:
+        print(t.mean())
 
 
 if __name__ == "__main__":
-    def test(n):
-        import time
-        import random
-        import torch
-        print(f'task={n}   {torch.cuda.current_device()=}')
-        time.sleep(random.random() + 2)
-        return True
-
-    def main():
-        futures = []
-        with GPUProcessPoolExecutor(gpu_indices=[0, 1, 2]) as executor:
-            for number in range(12):
-                futures.append(executor.submit(test, number))
-            for f in futures:
-                print(f.result())
-    main()
+    
+    test1()
+    test2()
+    test3()
+    try:
+        test4()
+    except Exception as e:
+        print(e)
+    test5()
+    

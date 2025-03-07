@@ -4,7 +4,6 @@ from diffusers import CogVideoXPipeline
 from gpu_process import GPUProcessPoolExecutor
 
 def gen_one_video(pipe: CogVideoXPipeline, prompt):
-    print(f"cuda visible devices: {os.environ.get('CUDA_VISIBLE_DEVICES', None)}")
     pipe.to('cuda')
     res = pipe(prompt, num_frames=17)
     return res
@@ -25,7 +24,7 @@ def main():
         "rainbow"
     ]
     
-    with GPUProcessPoolExecutor(gpu_indexs=[2, 4, 7]) as executor:
+    with GPUProcessPoolExecutor([4, 7]) as executor:
         res_ls = []
         for prompt in prompt_list:
             future = executor.submit(gen_one_video, pipe, prompt)
