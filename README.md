@@ -32,17 +32,21 @@ with GPUProcessPoolExecutor(gpu_indices=gpu_indices) as executor:
 see `example.py` for more details.
 
 ## How it works and modify
-When init each process worker, we could set environment as following to set default device:
+1. When init each process worker, we could set environment by set callable `gpu_initializer` functions to set default device.
+2. When gpu_indices not provided, a list of int will be get by `gpu_list_func`.
+3. both `gpu_initializer` and `gpu_list_func` are default as pytorch gpu interface.
+
 ```python
-    # set gpu environment
+def torch_gpu_set_func(gpu_index):
     import torch
     torch.cuda.set_device(gpu_index)
+    
+def torch_gpu_list_func():
+    import torch
+    return list(range(torch.cuda.device_count()))
+
+GPUProcessPoolExecutor(gpu_indices=None, 
+                gpu_initializer=torch_gpu_set_func,
+                gpu_list_func=torch_gpu_list_func):
 ```
 
-You could easily modify the code with following:
-```python
-    # set gpu environment
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_index)
-```
-acutally when import torch before CUDA_VISIBLE_DEVICES is set, the CUDA_VISIBLE_DEVICES does not work.
-So I finally choose to only set device using torch interface.
