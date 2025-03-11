@@ -10,26 +10,22 @@ This code is suitable for:
 - do some eval tasks in machine learning(given a list of text or images, using AI model to process them)
 - simple modify of others codebase to enable parallel with minimal change
 
-This code is limited with:
-- only support NVIDIA GPUs
-- only support torch set device
-- tensors on device could not trans as results
 
 ## Usage
 first copy the `gpu_process.py` to your code base.
 
 ```python
 from gpu_process import GPUProcessPoolExecutor
-gpu_indexs = [0, 1, 2]  # manul select gpu index
-gpu_indexs = None # for auto detect gpu via nvidia-smi
-with GPUProcessPoolExecutor(gpu_indexs=gpu_indexs) as executor:
+gpu_indices = [0, 1, 2]  # manul select gpu index
+gpu_indices = None # for auto detect gpu via nvidia-smi
+with GPUProcessPoolExecutor(gpu_indices=gpu_indices) as executor:
     executor.submit(<some functions>, <args>)
 
 # if GPU workload is small and memory is enough
 # we could assign two or more workers on a gpu
 # this will make gpu more utilized
-gpu_indexs = [0, 1, 2, 3] + [0, 1, 2, 3]  
-with GPUProcessPoolExecutor(gpu_indexs=gpu_indexs) as executor:
+gpu_indices = [0, 1, 2, 3] + [0, 1, 2, 3]  
+with GPUProcessPoolExecutor(gpu_indices=gpu_indices) as executor:
     executor.submit(<some functions>, <args>)
 ```
 
