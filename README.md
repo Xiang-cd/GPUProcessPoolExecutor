@@ -50,3 +50,6 @@ GPUProcessPoolExecutor(gpu_indices=None,
                 gpu_list_func=torch_gpu_list_func):
 ```
 
+## Some notice
+Some operation are not permited:
+1. send gpu tensor on same device to workers, receive gpu tensor of different gpu device from workers
